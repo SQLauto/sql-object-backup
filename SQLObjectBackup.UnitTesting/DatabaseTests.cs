@@ -41,7 +41,7 @@ namespace SQLObjectBackup.UnitTesting
         [TestMethod]
         public void TableName()
         {
-            Assert.IsNotNull(_sqlDatabase.Tables.Where(m => m.SchemaName == _testObjectSchemaName && m.ObjectName == _testObjectName));
+            Assert.IsNotNull(_sqlDatabase.Tables.Where(m => m.Schema.Name == _testObjectSchemaName && m.ObjectName == _testObjectName));
         }
 
         [TestMethod]

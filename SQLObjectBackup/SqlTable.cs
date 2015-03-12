@@ -12,24 +12,30 @@ namespace SQLObjectBackup
     {
         public int ObjectId { get; set; }
         public string ObjectName { get; private set; }
-        public string SchemaName { get; private set; }
-        public string FullyQuotedName { get; set; }
+        public string QuotedObjectName { get; private set; }
+        public SqlSchema Schema { get; private set; }
+        public string FullyQuotedName { get { return GetFullyQuotedName(); } }
 
-        public SqlTable(int objectId, string schemaName, string objectName, string fullyQuotedName)
+        public SqlTable(int objectId, SqlSchema schema, string objectName, string quotedObjectName)
         {
             if (objectId == 0)
                 throw new ArgumentException("ObjectID cannot be zero");
-            if (string.IsNullOrWhiteSpace(schemaName))
-                throw new ArgumentException("Schema name cannot be null or empty");
+            if (schema == null)
+                throw new ArgumentNullException("schema");
             if (string.IsNullOrWhiteSpace(objectName))
                 throw new ArgumentException("Object name cannot be null or empty");
-            if (string.IsNullOrWhiteSpace(fullyQuotedName))
-                throw new ArgumentException("Fully quoted name cannot be null or empty");
+            if (string.IsNullOrWhiteSpace(quotedObjectName))
+                throw new ArgumentException("Quoted object name cannot be null or empty");
 
             ObjectId = objectId;
             ObjectName = objectName;
-            SchemaName = schemaName;
-            FullyQuotedName = fullyQuotedName;
+            Schema = schema;
+            QuotedObjectName = quotedObjectName;
+        }
+
+        private string GetFullyQuotedName()
+        {
+            return string.Format("{0}.{1}", Schema.QuotedName, QuotedObjectName);
         }
     }
 }

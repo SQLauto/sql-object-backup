@@ -23,5 +23,8 @@ namespace SQLObjectBackup
         void RemoveAllBackups();
         void RemoveBackup(SqlTable sourceTable);
         void RemoveBackup(TableBackup tableBackup);
+
+        SqlTable RestoreTable(TableBackup tableBackup);
+        SqlTable RestoreTable(TableBackup tableBackup, RestoreRetention restoreRetention);
     }
 }

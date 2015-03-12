@@ -12,15 +12,13 @@ namespace SQLObjectBackup
     {
         private const string _backupSchemaName = "sqlob";
         private const string _metaDataTableName = "meta";
-
-        private IEnumerable<SqlTable> _tables;
-
+        
         public string SqlServerName { get; private set; }
         public string DatabaseName { get; private set; }
         public bool IsWindowsAuth { get; private set; }
         public string SqlUserName { get; private set; }
         public string Password { get; private set; }
-        public IEnumerable<SqlTable> Tables { get { return GetTables(); } private set { _tables = value; } }
+        public IEnumerable<SqlTable> Tables { get { return GetTables(); } }
 
         /// <summary>
         /// windows auth constructor
@@ -82,9 +80,9 @@ namespace SQLObjectBackup
                     @"select
                         t.object_id,
                         schema_name = s.name,
+	                    quoted_schema_name = quotename(s.name),
                         object_name = t.name,
-	                    fully_quoted_name = 
-		                    quotename(s.name) + '.' + quotename(t.name)
+                        quoted_object_name = quotename(t.name)
                     from sys.tables t
                     inner join sys.schemas s
                     on t.schema_id = s.schema_id;";
@@ -94,14 +92,14 @@ namespace SQLObjectBackup
                 foreach (DataRow row in output.Rows)
                     yield return new SqlTable(
                         Convert.ToInt32(row["object_id"]), 
-                        row["schema_name"].ToString(), 
+                        new SqlSchema(row["schema_name"].ToString(), row["quoted_schema_name"].ToString()), 
                         row["object_name"].ToString(),
-                        row["fully_quoted_name"].ToString());
+                        row["quoted_object_name"].ToString());
             }
         }
         public SqlTable GetTable(string schemaName, string objectName)
         {
-            IEnumerable<SqlTable> sqlTables = GetTables().Where(m => m.SchemaName == schemaName && m.ObjectName == objectName);
+            IEnumerable<SqlTable> sqlTables = GetTables().Where(m => m.Schema.Name == schemaName && m.ObjectName == objectName);
             if (sqlTables.Count() == 0)
                 return null;
             else
@@ -278,14 +276,8 @@ namespace SQLObjectBackup
                 throw new SqlDatabaseException("Base entities must exist before backing up the table");
             if (sourceTable == null)
                 throw new ArgumentNullException("sourceTable");
-            if (string.IsNullOrWhiteSpace(sourceTable.ObjectName))
-                throw new SqlDatabaseException("Source table object name can't be null");
-            if (string.IsNullOrWhiteSpace(sourceTable.SchemaName))
-                throw new SqlDatabaseException("Source table schema name can't be null");
-            if (sourceTable.ObjectId == 0)
-                throw new SqlDatabaseException("Source table object_id can't be 0");
-
-            SqlTable backupTable = CreateTableCopy(sourceTable, GenerateBackupTableName(sourceTable));
+            
+            SqlTable backupTable = CreateTableCopy(sourceTable, GenerateUniqueTableName(sourceTable));
 
             // test for a returned backup table object 
             // the logic here is that if no table is returned 
@@ -297,7 +289,7 @@ namespace SQLObjectBackup
                         
             return backupTable;
         }
-        private string GenerateBackupTableName(SqlTable sourceTable)
+        private string GenerateUniqueTableName(SqlTable sourceTable)
         {
             // note: the schema for the backup tables will always be the 
             // backup schema name, they won't be stored in any other schema
@@ -403,6 +395,9 @@ namespace SQLObjectBackup
         }
         public void RemoveBackup(TableBackup tableBackup)
         {
+            if (tableBackup == null)
+                throw new ArgumentNullException("tableBackup");
+
             RemoveTable(tableBackup.BackupTable);
 
             // do a sanity check to make sure the backup table 
@@ -421,7 +416,7 @@ namespace SQLObjectBackup
         {
             if (table == null)
                 throw new ArgumentNullException("table");
-            if (GetTable(table.SchemaName, table.ObjectName) == null)
+            if (GetTable(table.Schema.Name, table.ObjectName) == null)
                 throw new SqlDatabaseException("Table does not exist in the database");
 
             using (SqlConnection databaseConnection = new SqlConnection(GetConnectionString()))
@@ -456,6 +451,43 @@ namespace SQLObjectBackup
 
                 databaseConnection.Open();
                 sqlCmd.ExecuteNonQuery();
+            }
+        }
+
+        public SqlTable RestoreTable(TableBackup tableBackup)
+        {
+            return RestoreTable(tableBackup, RestoreRetention.KeepReplacedTable);
+        }
+        public SqlTable RestoreTable(TableBackup tableBackup, RestoreRetention restoreRetention)
+        {
+            SqlTable schemaTransferredTable = MoveTableSchema(tableBackup.)
+        }
+        private SqlTable MoveTableSchema(SqlTable table, SqlSchema newSchema)
+        {
+            if (table == null)
+                throw new ArgumentNullException("table");
+            if (newSchema == null)
+                throw new ArgumentNullException("newSchema");
+
+            using (SqlConnection databaseConnection = new SqlConnection(GetConnectionString()))
+            using (SqlCommand sqlCmd = new SqlCommand())
+            {
+                sqlCmd.Connection = databaseConnection;
+                sqlCmd.CommandText = string.Format(@"
+                    alter schema {0}
+                    transfer {1};",
+                    newSchema.QuotedName,
+                    table.FullyQuotedName);
+
+                databaseConnection.Open();
+                sqlCmd.ExecuteNonQuery();
+
+                SqlTable transferredTable = GetTable(newSchema.Name, table.ObjectName);
+
+                if (transferredTable == null)
+                    throw new SqlDatabaseException("The table was expected to have moved schemas and something went wrong");
+
+                return transferredTable;
             }
         }
     }
